@@ -1,131 +1,138 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
 import {
-  ScrollView,
-  StatusBar,
+  Alert,
+  Linking,
+  PermissionsAndroid,
   StyleSheet,
-  Text,
-  useColorScheme,
   View,
+  BackHandler,
+  ActivityIndicator,
 } from 'react-native';
+import React, {useState, useEffect, useRef} from 'react';
+import WebView from 'react-native-webview';
+import Geolocation from 'react-native-geolocation-service';
+import SplashScreen from 'react-native-splash-screen';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+export default function App() {
+  const url = 'https://demo2.geoagrodigital.org/mobile511';
+  const webViewRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [isAppLoaded, setIsAppLoaded] = useState(false);
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+  const requestLocationPermission = async () => {
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        {
+          title: 'Location Permission',
+          message: 'This app needs access to your location to function properly.',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        },
+      );
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        console.log('Location permission granted');
+        Geolocation.getCurrentPosition(
+          position => console.log('Location:', position),
+          error => {
+            if (error.code === 2) {
+              Alert.alert(
+                'Enable Location Services',
+                'Your device location is turned off. Please enable it to continue.',
+                [
+                  {text: 'Cancel', style: 'cancel'},
+                  {text: 'Open Settings', onPress: () => Linking.openSettings()},
+                ],
+              );
+            }
           },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
-
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+          {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
+        );
+      } else {
+        console.log('Location permission denied');
+        Alert.alert('Location Permission Denied', 'This app requires location access.');
+      }
+    } catch (err) {
+      console.warn(err);
+    }
   };
 
-  /*
-   * To keep the template simple and small we're adding padding to prevent view
-   * from rendering under the System UI.
-   * For bigger apps the reccomendation is to use `react-native-safe-area-context`:
-   * https://github.com/AppAndFlow/react-native-safe-area-context
-   *
-   * You can read more about it here:
-   * https://github.com/react-native-community/discussions-and-proposals/discussions/827
-   */
-  const safePadding = '5%';
+  useEffect(() => {
+    requestLocationPermission();
 
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      handleBackButton,
+    );
+
+    return () => {
+      backHandler.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAppLoaded) {
+      // ✅ Show splash screen only on app start
+      setTimeout(() => {
+        SplashScreen.hide();
+        setIsAppLoaded(true); // ✅ Set flag so splash screen doesn't show again
+      }, 2000);
+    }
+  }, [isAppLoaded]);
+
+  const handleBackButton = () => {
+    if (webViewRef.current) {
+      webViewRef.current.goBack();
+      return true; // Prevent default back action
+    }
+  
+    Alert.alert(
+      'Exit App',
+      'Do you want to exit the app?',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {text: 'OK', onPress: () => BackHandler.exitApp()},
+      ],
+      {cancelable: false},
+    );
+    return true;
+  };
+  
   return (
-    <View style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
+    <View style={{flex: 1}}>
+      {/* {loading && (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+        </View>
+      )} */}
+
+      <WebView
+        style={{flex: 1}}
+        ref={webViewRef}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        allowFileAccess={true}
+        allowUniversalAccessFromFileURLs={true}
+        source={{uri: url}}
+        onLoadStart={() => setLoading(true)}
+        onLoad={() => setLoading(false)}
+        onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
       />
-      <ScrollView
-        style={backgroundStyle}>
-        <View style={{paddingRight: safePadding}}>
-          <Header/>
-        </View>
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-            paddingHorizontal: safePadding,
-            paddingBottom: safePadding,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
+  loaderContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    zIndex: 1,
   },
 });
-
-export default App;

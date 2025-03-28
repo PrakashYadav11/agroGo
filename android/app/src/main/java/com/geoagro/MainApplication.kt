@@ -1,4 +1,4 @@
-package com.agrogo
+package com.geoagro
 
 import android.app.Application
 import com.facebook.react.PackageList
