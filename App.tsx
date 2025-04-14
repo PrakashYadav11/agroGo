@@ -1,138 +1,134 @@
 import {
-  Alert,
-  Linking,
-  PermissionsAndroid,
-  StyleSheet,
   View,
+  Alert,
   BackHandler,
-  ActivityIndicator,
+  PermissionsAndroid,
+  Platform,
+  Linking,
 } from 'react-native';
-import React, {useState, useEffect, useRef} from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import WebView from 'react-native-webview';
+import NetInfo from '@react-native-community/netinfo';
 import Geolocation from 'react-native-geolocation-service';
 import SplashScreen from 'react-native-splash-screen';
 
-export default function App() {
+const App = () => {
   const url = 'https://demo2.geoagrodigital.org/mobile511';
   const webViewRef = useRef(null);
-  const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
-  const [isAppLoaded, setIsAppLoaded] = useState(false);
 
-  const requestLocationPermission = async () => {
-    try {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        {
-          title: 'Location Permission',
-          message: 'This app needs access to your location to function properly.',
-          buttonNegative: 'Cancel',
-          buttonPositive: 'OK',
-        },
-      );
+  // Hide splash screen
+  useEffect(() => {
+    SplashScreen.hide();
+  }, []);
 
-      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        console.log('Location permission granted');
-        Geolocation.getCurrentPosition(
-          position => console.log('Location:', position),
-          error => {
-            if (error.code === 2) {
-              Alert.alert(
-                'Enable Location Services',
-                'Your device location is turned off. Please enable it to continue.',
-                [
-                  {text: 'Cancel', style: 'cancel'},
-                  {text: 'Open Settings', onPress: () => Linking.openSettings()},
-                ],
-              );
-            }
-          },
-          {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
-        );
-      } else {
-        console.log('Location permission denied');
-        Alert.alert('Location Permission Denied', 'This app requires location access.');
+  // Handle back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (canGoBack && webViewRef.current) {
+          webViewRef.current?.goBack();
+          return true;
+        }
+        Alert.alert('Exit App', 'Do you want to exit?', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Exit', onPress: () => BackHandler.exitApp() },
+        ]);
+        return true;
       }
-    } catch (err) {
-      console.warn(err);
+    );
+
+    return () => backHandler.remove();
+  }, [canGoBack]);
+
+  // Check internet connection
+  const checkInternet = () => {
+    NetInfo.fetch().then((state) => {
+      if (!state.isConnected) {
+        Alert.alert(
+          'No Internet Connection',
+          'Please enable mobile data or Wi-Fi.',
+          [
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+      }
+    });
+  };
+
+  // Request location permission and fetch current location
+  const requestLocationPermission = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'Location Permission',
+            message: 'This app needs access to your location to function properly.',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        );
+
+        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+          console.log('Location permission granted');
+          getCurrentLocation();
+        } else {
+          Alert.alert('Permission Denied', 'Location permission is required.');
+        }
+      } catch (err) {
+        console.warn(err);
+      }
+    } else {
+      getCurrentLocation(); // iOS handles permissions differently
     }
+  };
+
+  const getCurrentLocation = () => {
+    Geolocation.getCurrentPosition(
+      (position) => {
+        console.log('Location:', position.coords);
+      },
+      (error) => {
+        console.warn(error);
+        if (error.code === 2) {
+          Alert.alert(
+            'Enable Location',
+            'Please enable location services.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    );
   };
 
   useEffect(() => {
     requestLocationPermission();
-
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      handleBackButton,
-    );
-
-    return () => {
-      backHandler.remove();
-    };
+    checkInternet();
   }, []);
 
-  useEffect(() => {
-    if (!isAppLoaded) {
-      // ✅ Show splash screen only on app start
-      setTimeout(() => {
-        SplashScreen.hide();
-        setIsAppLoaded(true); // ✅ Set flag so splash screen doesn't show again
-      }, 2000);
-    }
-  }, [isAppLoaded]);
-
-  const handleBackButton = () => {
-    if (webViewRef.current) {
-      webViewRef.current.goBack();
-      return true; // Prevent default back action
-    }
-  
-    Alert.alert(
-      'Exit App',
-      'Do you want to exit the app?',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {text: 'OK', onPress: () => BackHandler.exitApp()},
-      ],
-      {cancelable: false},
-    );
-    return true;
-  };
-  
   return (
-    <View style={{flex: 1}}>
-      {/* {loading && (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-        </View>
-      )} */}
-
+    <View style={{ flex: 1 }}>
       <WebView
-        style={{flex: 1}}
         ref={webViewRef}
+        style={{ flex: 1 }}
+        source={{ uri: url }}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         allowFileAccess={true}
         allowUniversalAccessFromFileURLs={true}
-        source={{uri: url}}
-        onLoadStart={() => setLoading(true)}
-        onLoad={() => setLoading(false)}
-        onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
+        onNavigationStateChange={(navState) => {
+          setCanGoBack(navState.canGoBack);
+        }}
       />
     </View>
   );
-}
+};
 
-const styles = StyleSheet.create({
-  loaderContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    zIndex: 1,
-  },
-});
+export default App;
